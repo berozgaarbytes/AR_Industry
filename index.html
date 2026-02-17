@@ -2,151 +2,190 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
-    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
-    
+    <title>AI Agent AR - Pro</title>
+    <script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
     <style>
         :root { --neon: #00ffcc; --danger: #ff3366; }
-        body { margin: 0; font-family: 'Segoe UI', sans-serif; background: #000; overflow: hidden; }
+        body { margin: 0; font-family: 'Segoe UI', sans-serif; }
         
-        /* UI Layer Adjustments for AR */
-        #ui-layer { 
-            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 1000; 
-            background: rgba(10, 20, 30, 0.85); padding: 15px; border-radius: 20px; 
-            border: 1px solid var(--neon); display: flex; gap: 10px; flex-direction: column; 
-            align-items: center; width: 90%; max-width: 400px;
+        /* UI Overlay */
+        #ar-ui {
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            z-index: 1000; width: 90%; max-width: 400px;
+            background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(10px);
+            padding: 20px; border-radius: 25px; border: 1px solid rgba(0, 255, 204, 0.3);
+            display: flex; flex-direction: column; align-items: center; gap: 15px;
         }
-        .controls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
-        button { 
-            background: transparent; border: 1px solid var(--neon); color: var(--neon); 
-            padding: 8px 12px; cursor: pointer; border-radius: 8px; font-weight: bold; font-size: 11px;
-        }
-        button:hover { background: var(--neon); color: #000; }
-        button.active { background: var(--danger); border-color: var(--danger); color: white; }
-        #log { color: #888; font-size: 10px; text-align: center; }
+
+        .btn-group { display: flex; gap: 10px; width: 100%; }
         
-        /* Camera Toggle UI */
-        #camToggle { background: var(--neon); color: #000; position: absolute; top: 20px; right: 20px; z-index: 1000; }
+        button {
+            flex: 1; background: rgba(255,255,255,0.1); border: 1px solid var(--neon);
+            color: var(--neon); padding: 12px; border-radius: 12px;
+            font-weight: bold; text-transform: uppercase; letter-spacing: 1px;
+            transition: 0.2s; font-size: 10px;
+        }
+
+        button.active { background: var(--neon); color: #000; box-shadow: 0 0 15px var(--neon); }
+
+        #status-log { color: #fff; font-size: 12px; font-family: monospace; text-shadow: 0 0 5px #000; }
+
+        /* Instructions overlay */
+        #instructions {
+            position: fixed; top: 20px; width: 100%; text-align: center;
+            color: white; z-index: 1000; pointer-events: none;
+        }
     </style>
 </head>
-<body style="margin: 0px; overflow: hidden;">
+<body>
 
-    <button id="camToggle">SWITCH CAMERA</button>
+    <div id="instructions">POINT CAMERA AT FLOOR AND TAP TO SPAWN</div>
 
-    <div id="ui-layer">
-        <div id="log">AR SYSTEM READY // ACCESS CAMERA</div>
-        <div class="controls">
-            <button id="talkBtn">1. TALK</button>
-            <button id="genBtn">2. GENERATE</button>
-            <button id="danceBtn">3. DANCE</button>
+    <div id="ar-ui">
+        <div id="status-log">SYSTEM: INITIALIZING AR...</div>
+        <div class="btn-group">
+            <button id="talkBtn">Listen</button>
+            <button id="genBtn">Analyze</button>
+            <button id="danceBtn">Dance</button>
         </div>
     </div>
 
-    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;" renderer="logarithmicDepthBuffer: true;">
+    <a-scene 
+        webxr="requiredFeatures: hit-test, local-floor; optionalFeatures: dom-overlay; overlayElement: #ar-ui;"
+        renderer="antialias: true; alpha: true; exposure: 1;"
+        reflection="directionalLight: #d-light"
+        shadow="type: pcfsoft">
         
-        <a-light type="ambient" intensity="0.7"></a-light>
-        <a-light type="directional" position="1 2 1" intensity="0.8"></a-light>
+        <a-assets>
+            </a-assets>
 
-        <a-entity id="robot" position="0 0 -5" scale="0.5 0.5 0.5">
-            <a-animation id="danceAnim" attribute="rotation" dur="1000" fill="forwards" to="0 360 0" repeat="indefinite" begin="startDance" end="stopDance"></a-animation>
-            
-            <a-box id="head" width="1.2" height="1" depth="0.7" color="#2c3e50" position="0 0.5 0">
-                <a-plane id="screen" position="0 0 0.36" width="1" height="0.8" color="#111">
-                    <a-circle id="eyeL" position="-0.25 0.1 0.01" radius="0.08" color="#00ffcc"></a-circle>
-                    <a-circle id="eyeR" position="0.25 0.1 0.01" radius="0.08" color="#00ffcc"></a-circle>
-                </a-plane>
-            </a-box>
-            <a-cylinder radius="0.04" height="0.2" position="0 -0.1 0" color="#1a252f"></a-cylinder>
-            <a-cone radius-bottom="0.4" radius-top="0.1" height="0.8" position="0 -0.6 0" color="#34495e"></a-cone>
-            
-            <a-text id="responseBox" value="AR ONLINE" position="0 1.5 0" align="center" width="5" color="#00ffcc"></a-text>
+        <a-light type="ambient" intensity="0.5"></a-light>
+        <a-light id="d-light" type="directional" position="1 5 1" intensity="1" castShadow="true"></a-light>
+
+        <a-entity id="reticle" visible="false" raycaster="objects: .none">
+            <a-ring rotation="-90 0 0" radius-inner="0.15" radius-outer="0.2" color="#00ffcc">
+                <a-circle radius="0.05" color="#00ffcc" animation="property: scale; to: 1.2 1.2 1.2; dir: alternate; loop: true"></a-circle>
+            </a-ring>
         </a-entity>
 
-        <a-entity camera></a-entity>
+        <a-entity id="robot-wrapper" position="0 -10 0" visible="false" shadow="receive: false">
+            <a-entity id="robot" scale="0.4 0.4 0.4">
+                <a-box id="head" width="1" height="0.8" depth="0.7" color="#2c3e50" shadow>
+                    <a-plane position="0 0 0.36" width="0.8" height="0.6" color="#111">
+                        <a-circle id="eyeL" position="-0.2 0.1 0.01" radius="0.06" color="#00ffcc"></a-circle>
+                        <a-circle id="eyeR" position="0.2 0.1 0.01" radius="0.06" color="#00ffcc"></a-circle>
+                    </a-plane>
+                </a-box>
+                <a-cylinder radius="0.05" height="0.2" position="0 -0.5 0" color="#1a252f"></a-cylinder>
+                <a-cone radius-bottom="0.4" radius-top="0.1" height="0.8" position="0 -0.9 0" color="#34495e" shadow></a-cone>
+                
+                <a-text id="responseBox" value="READY" position="0 1.2 0" align="center" width="4" color="#00ffcc"></a-text>
+            </a-entity>
+        </a-entity>
+
+        <a-camera position="0 1.6 0"></a-camera>
     </a-scene>
 
     <script>
-        const log = document.getElementById('log');
-        const talkBtn = document.getElementById('talkBtn');
-        const genBtn = document.getElementById('genBtn');
-        const danceBtn = document.getElementById('danceBtn');
-        const camToggle = document.getElementById('camToggle');
-        const responseBox = document.getElementById('responseBox');
-        const screen = document.getElementById('screen');
-        const robot = document.getElementById('robot');
+        const log = document.getElementById('status-log');
+        const robotWrapper = document.getElementById('robot-wrapper');
+        const reticle = document.getElementById('reticle');
+        const scene = document.querySelector('a-scene');
 
+        // 1. AR Hit Testing (Finding the floor)
+        scene.addEventListener('enter-vr', () => {
+            log.innerText = "AR MODE ACTIVE. FINDING FLOOR...";
+        });
+
+        scene.addEventListener('click', (event) => {
+            if (reticle.getAttribute('visible')) {
+                // Move robot to reticle position
+                const pos = reticle.getAttribute('position');
+                robotWrapper.setAttribute('position', pos);
+                robotWrapper.setAttribute('visible', true);
+                
+                // Add a little spawn effect
+                log.innerText = "AGENT DEPLOYED";
+                document.getElementById('instructions').style.display = 'none';
+                
+                // Make the robot face the user
+                const camPos = scene.camera.el.getAttribute('position');
+                robotWrapper.setAttribute('rotation', `0 ${Math.atan2(camPos.x - pos.x, camPos.z - pos.z) * (180 / Math.PI)} 0`);
+            }
+        });
+
+        // 2. Continuous Hit-Test Logic
+        let hitTestResults = null;
+        scene.addEventListener('renderstart', () => {
+            const renderer = scene.renderer;
+            const session = scene.xrSession;
+            
+            if (session) {
+                session.requestReferenceSpace('viewer').then((refSpace) => {
+                    session.requestHitTestSource({ space: refSpace }).then((source) => {
+                        window.hitTestSource = source;
+                    });
+                });
+
+                session.requestReferenceSpace('local-floor').then((refSpace) => {
+                    window.localFloorSpace = refSpace;
+                });
+            }
+        });
+
+        // Frame-by-frame update for the reticle
+        const originalTick = scene.tick;
+        scene.tick = function (time, delta) {
+            if (window.hitTestSource && window.localFloorSpace) {
+                const frame = scene.frame;
+                if (frame) {
+                    const hitTestResults = frame.getHitTestResults(window.hitTestSource);
+                    if (hitTestResults.length > 0) {
+                        const hit = hitTestResults[0];
+                        const pose = hit.getPose(window.localFloorSpace);
+                        reticle.setAttribute('visible', true);
+                        reticle.setAttribute('position', pose.transform.position);
+                    }
+                }
+            }
+        };
+
+        // 3. AI & Speech Features (Consolidated)
         const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
         const synth = window.speechSynthesis;
         let lastTranscript = "";
-        let isDancing = false;
-        let currentFacingMode = "environment";
 
-        // CAMERA TOGGLE LOGIC
-        camToggle.addEventListener('click', () => {
-            currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
-            
-            // Re-initialize AR.js source
-            const scene = document.querySelector('a-scene');
-            const arjsSystem = scene.systems.arjs;
-            
-            // Alert user - in a real app, you'd re-initialize the video stream constraints
-            log.innerText = "SWITCHING TO " + currentFacingMode.toUpperCase();
-            location.reload(); // Simplest way to re-trigger permission/constraints for AR.js
-        });
-
-        // SPEECH & AGENT LOGIC (Retained from your original)
-        talkBtn.addEventListener('click', () => {
-            try {
-                if (talkBtn.classList.contains('active')) {
-                    recognition.stop();
-                    talkBtn.classList.remove('active');
-                    log.innerText = "MIC MUTED";
-                } else {
-                    recognition.start();
-                    talkBtn.classList.add('active');
-                    log.innerText = "LISTENING...";
-                }
-            } catch(e) { log.innerText = "ERR: " + e.message; }
-        });
-
-        recognition.onresult = (event) => {
-            lastTranscript = event.results[0][0].transcript;
-            log.innerText = "HEARD: " + lastTranscript;
-            responseBox.setAttribute('value', lastTranscript.toUpperCase());
+        document.getElementById('talkBtn').onclick = () => {
+            recognition.start();
+            log.innerText = "LISTENING...";
         };
 
-        genBtn.addEventListener('click', () => {
-            if (!lastTranscript) return speak("Looking for data...");
-            log.innerText = "THINKING...";
-            screen.setAttribute('color', '#333');
-            
-            let answer = "AR Scan complete. I see you're looking at the real world. ";
-            if (lastTranscript.includes("fail")) {
-                answer += "Machine M1 requires immediate maintenance.";
-                screen.setAttribute('color', '#ff3366');
-            } else {
-                answer += "All systems in this sector are functioning within normal parameters.";
-                screen.setAttribute('color', '#00ffcc');
-            }
-            speak(answer);
-        });
+        recognition.onresult = (e) => {
+            lastTranscript = e.results[0][0].transcript;
+            log.innerText = "YOU: " + lastTranscript;
+            document.getElementById('responseBox').setAttribute('value', lastTranscript.toUpperCase());
+        };
 
-        danceBtn.addEventListener('click', () => {
-            isDancing = !isDancing;
-            if (isDancing) {
-                robot.emit('startDance');
-                danceBtn.classList.add('active');
-                speak("Commencing AR dance sequence!");
-            } else {
-                robot.emit('stopDance');
-                danceBtn.classList.remove('active');
-            }
-        });
+        document.getElementById('genBtn').onclick = () => {
+            if (!lastTranscript) return speak("Scanning area... no voice data found.");
+            speak("Analysis: Surface integrity 98%. Robot positioning optimal.");
+        };
 
-        function speak(text) {
-            const utter = new SpeechSynthesisUtterance(text);
-            utter.pitch = 1.2;
-            synth.speak(utter);
+        document.getElementById('danceBtn').onclick = function() {
+            this.classList.toggle('active');
+            const isDancing = this.classList.contains('active');
+            if(isDancing) {
+                document.getElementById('robot').setAttribute('animation', "property: rotation; to: 0 360 0; loop: true; dur: 2000; easing: linear");
+                speak("Engaging dance protocols!");
+            } else {
+                document.getElementById('robot').removeAttribute('animation');
+            }
+        };
+
+        function speak(t) {
+            const u = new SpeechSynthesisUtterance(t);
+            u.pitch = 1.1;
+            synth.speak(u);
         }
     </script>
 </body>
