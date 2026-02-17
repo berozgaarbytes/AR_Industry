@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>VisionGuard AR Concierge</title>
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    
+    <style>
+      .buttons { position: absolute; bottom: 50px; left: 0; width: 100%; display: flex; justify-content: center; z-index: 10; }
+      button { padding: 15px; border-radius: 50%; border: none; background: #FF0000; color: white; font-weight: bold; cursor: pointer; }
+    </style>
+  </head>
+
+  <body style="margin: 0; overflow: hidden;">
+    <div class="buttons">
+      <button id="micButton">TAP TO TALK</button>
+    </div>
+
+    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;">
+      
+      <a-marker preset="hiro">
+        
+        <a-entity id="tvCharacter" position="0 0 0" scale="0.5 0.5 0.5">
+          <a-box position="0 0.5 0" color="#444" width="1" height="1.2" depth="0.5"></a-box>
+          <a-cylinder position="0 1.2 0" radius="0.1" height="0.3" color="#222"></a-cylinder>
+          <a-box position="0 1.8 0" width="1.2" height="1" depth="0.8" color="#333">
+            <a-plane id="faceScreen" position="0 0 0.41" width="1" height="0.8" color="#00FF00"></a-plane>
+            <a-cylinder position="0.3 0.6 0" radius="0.02" height="0.5" color="#555" rotation="0 0 -20"></a-cylinder>
+          </a-box>
+          
+          <a-text id="aiStatus" value="I am listening..." position="0 2.8 0" align="center" color="white" width="4"></a-text>
+        </a-entity>
+
+      </a-marker>
+
+      <a-entity camera></a-entity>
+    </a-scene>
+
+    <script>
+      const micBtn = document.getElementById('micButton');
+      const statusText = document.getElementById('aiStatus');
+      const screen = document.getElementById('faceScreen');
+
+      // Check if browser supports speech
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+
+        micBtn.addEventListener('click', () => {
+          recognition.start();
+          micBtn.style.background = "green";
+          statusText.setAttribute('value', "Listening to you...");
+        });
+
+        recognition.onresult = (event) => {
+          const transcript = event.results[0][0].transcript.toLowerCase();
+          processCommand(transcript);
+        };
+
+        recognition.onspeechend = () => {
+          recognition.stop();
+          micBtn.style.background = "red";
+        };
+      }
+
+      function processCommand(text) {
+        console.log("User said:", text);
+        
+        // SIMPLE BRAIN LOGIC
+        if (text.includes("machine") || text.includes("fail")) {
+          speak("Machine 4 has a high vibration alert. Please check the cooling valve.");
+          screen.setAttribute('color', 'red'); // TV turns red for danger
+        } else if (text.includes("hello") || text.includes("hi")) {
+          speak("Hello! I am your shop floor assistant. How can I help today?");
+          screen.setAttribute('color', '#00FF00');
+        } else {
+          speak("I heard you say " + text + ". I'm not sure what that means yet.");
+        }
+      }
+
+      function speak(message) {
+        statusText.setAttribute('value', message);
+        const synth = window.speechSynthesis;
+        const utterThis = new SpeechSynthesisUtterance(message);
+        synth.speak(utterThis);
+      }
+    </script>
+  </body>
+</html>
