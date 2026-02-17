@@ -2,196 +2,125 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AI Agent AR - Production Grade</title>
+    <title>AR Retail Try-On 2026</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    
     <style>
-        :root { --neon: #00ffcc; --bg: rgba(10, 20, 30, 0.9); }
-        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Roboto, sans-serif; }
-        
-        /* High-End UI Overlay */
-        #overlay {
-            position: absolute; bottom: 0; left: 0; width: 100%;
-            padding: 30px 20px; box-sizing: border-box;
-            display: flex; flex-direction: column; align-items: center;
-            z-index: 10; pointer-events: none;
+        body { margin: 0; background: #000; font-family: sans-serif; }
+        #ui-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 10; pointer-events: none; display: flex; flex-direction: column;
         }
-
-        .glass-panel {
-            pointer-events: auto; background: var(--bg);
-            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(0, 255, 204, 0.3); border-radius: 24px;
-            padding: 20px; width: 100%; max-width: 400px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        .header { background: rgba(0,0,0,0.8); padding: 20px; color: #00ffcc; text-align: center; }
+        .footer { margin-top: auto; padding: 30px; display: flex; justify-content: center; gap: 20px; pointer-events: auto; }
+        button { 
+            padding: 15px 25px; border-radius: 50px; border: 2px solid #00ffcc;
+            background: rgba(0,255,204,0.1); color: #00ffcc; font-weight: bold; cursor: pointer;
         }
-
-        #status {
-            color: var(--neon); font-family: monospace; font-size: 13px;
-            margin-bottom: 15px; text-align: center; text-transform: uppercase;
-        }
-
-        .controls { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
-
-        button {
-            background: rgba(255,255,255,0.05); border: 1px solid var(--neon);
-            color: var(--neon); padding: 12px 5px; border-radius: 12px;
-            font-weight: bold; font-size: 11px; cursor: pointer; transition: 0.2s;
-        }
-
-        button:active { background: var(--neon); color: #000; }
-        button.active { background: #ff3366; border-color: #ff3366; color: white; }
-
-        #instructions {
-            position: absolute; top: 20%; left: 50%; transform: translateX(-50%);
-            color: white; text-align: center; font-weight: bold;
-            text-shadow: 0 2px 10px rgba(0,0,0,0.8); pointer-events: none;
-        }
+        button:hover { background: #00ffcc; color: #000; }
+        video { display: none; } /* Hidden, used as source for A-Frame */
     </style>
 </head>
 <body>
 
-    <div id="instructions">MOVE PHONE TO SCAN FLOOR<br>TAP RING TO DEPLOY AGENT</div>
-
-    <div id="overlay">
-        <div class="glass-panel">
-            <div id="status">System: Waiting for AR Entry...</div>
-            <div class="controls">
-                <button id="talkBtn">LISTEN</button>
-                <button id="genBtn">ANALYZE</button>
-                <button id="danceBtn">DANCE</button>
-            </div>
+    <div id="ui-overlay">
+        <div class="header">VIRTUAL FITTING ROOM // 2026 RETAIL</div>
+        <div class="footer">
+            <button onclick="changeOutfit('#tshirt')">T-SHIRT</button>
+            <button onclick="changeOutfit('#jacket')">JACKET</button>
+            <button id="snapBtn">CAPTURE LOOK</button>
         </div>
     </div>
 
-    <a-scene 
-        webxr="requiredFeatures: hit-test, local-floor; optionalFeatures: dom-overlay, light-estimation; overlayElement: #overlay;"
-        renderer="antialias: true; alpha: true; colorManagement: true; exposure: 1.2;"
-        shadow="type: pcfsoft">
-        
-        <a-light type="ambient" intensity="0.6"></a-light>
-        <a-light id="mainLight" type="directional" position="1 4 2" intensity="0.8" castShadow="true" 
-                 shadow-camera-left="-2" shadow-camera-right="2" shadow-camera-top="2" shadow-camera-bottom="-2"></a-light>
+    <a-scene embedded vr-mode-ui="enabled: false">
+        <a-assets>
+            <video id="webcam" autoplay playsinline></video>
+            <a-asset-item id="shirtModel" src="https://cdn.aframe.io/test-models/models/glTF-2.0/virtualcity/VC.gltf"></a-asset-item>
+        </a-assets>
 
-        <a-entity id="reticle" visible="false">
-            <a-ring rotation="-90 0 0" radius-inner="0.12" radius-outer="0.18" color="#00ffcc">
-                <a-circle radius="0.04" color="#00ffcc" animation="property: scale; to: 1.2 1.2 1.2; dir: alternate; loop: true; dur: 600"></a-circle>
-            </a-ring>
+        <a-video src="#webcam" position="0 1.6 -3" width="6.4" height="4.8"></a-video>
+
+        <a-entity id="outfit" position="0 1.6 -2" visible="false">
+            <a-box id="torso" width="0.8" height="1" depth="0.2" color="#00ffcc" opacity="0.6">
+                <a-text value="PREMIUM FIT" position="0 0.6 0.12" align="center" width="2"></a-text>
+            </a-box>
+            <a-cylinder position="-0.4 0.4 0" rotation="0 0 90" radius="0.05" height="0.4" color="#00ffcc"></a-cylinder>
+            <a-cylinder position="0.4 0.4 0" rotation="0 0 -90" radius="0.05" height="0.4" color="#00ffcc"></a-cylinder>
         </a-entity>
 
-        <a-entity id="anchor" visible="false">
-            <a-entity id="robot" scale="0.4 0.4 0.4" position="0 0 0">
-                <a-box id="head" width="1" height="0.8" depth="0.7" color="#2c3e50" shadow>
-                    <a-plane position="0 0 0.36" width="0.8" height="0.6" color="#111">
-                        <a-circle id="eyeL" position="-0.2 0.1 0.01" radius="0.06" color="#00ffcc"></a-circle>
-                        <a-circle id="eyeR" position="0.2 0.1 0.01" radius="0.06" color="#00ffcc"></a-circle>
-                    </a-plane>
-                </a-box>
-                <a-cylinder radius="0.05" height="0.2" position="0 -0.5 0" color="#1a252f"></a-cylinder>
-                <a-cone radius-bottom="0.4" radius-top="0.1" height="0.8" position="0 -0.9 0" color="#34495e" shadow></a-cone>
-                
-                <a-text id="responseBox" value="ONLINE" position="0 1.2 0" align="center" width="4" color="#00ffcc"></a-text>
-            </a-entity>
-
-            <a-plane rotation="-90 0 0" width="10" height="10" shadow="receive: true" material="opacity: 0.4; transparent: true; color: #000; shader: flat" visible="true"></a-plane>
-        </a-entity>
-
-        <a-camera position="0 1.6 0"></a-camera>
+        <a-camera position="0 1.6 0" look-controls-enabled="false"></a-camera>
     </a-scene>
 
     <script>
-        const statusLog = document.getElementById('status');
-        const reticle = document.getElementById('reticle');
-        const anchor = document.getElementById('anchor');
-        const robot = document.getElementById('robot');
-        const scene = document.querySelector('a-scene');
-        const instructions = document.getElementById('instructions');
+        const videoElement = document.getElementById('webcam');
+        const outfit = document.getElementById('outfit');
 
-        // PRODUCTION WEBXR HANDLERS
-        scene.addEventListener('enter-vr', () => {
-            statusLog.innerText = "AR ACTIVE: SCANNING...";
+        // 1. Setup MediaPipe Pose
+        const pose = new Pose({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
         });
 
-        // Hit-Testing Logic (Finding the floor)
-        let hitTestSource = null;
-        let localFloorSpace = null;
-
-        scene.addEventListener('renderstart', async () => {
-            const session = scene.xrSession;
-            if (!session) return;
-
-            localFloorSpace = await session.requestReferenceSpace('local-floor');
-            const viewerSpace = await session.requestReferenceSpace('viewer');
-            hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
-
-            session.requestAnimationFrame(onXRFrame);
+        pose.setOptions({
+            modelComplexity: 1,
+            smoothLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
         });
 
-        function onXRFrame(time, frame) {
-            if (!hitTestSource) return;
-            const hitTestResults = frame.getHitTestResults(hitTestSource);
-
-            if (hitTestResults.length > 0) {
-                const hit = hitTestResults[0];
-                const pose = hit.getPose(localFloorSpace);
-                
-                reticle.setAttribute('visible', true);
-                reticle.setAttribute('position', pose.transform.position);
-                reticle.setAttribute('rotation', {x: -90, y: 0, z: 0});
+        // 2. Handle Pose Results
+        pose.onResults((results) => {
+            if (!results.poseLandmarks) {
+                outfit.setAttribute('visible', 'false');
+                return;
             }
-            scene.xrSession.requestAnimationFrame(onXRFrame);
-        }
 
-        // Tap to Spawn (Like PokeBall Throw)
-        scene.addEventListener('click', () => {
-            if (reticle.getAttribute('visible')) {
-                const spawnPos = reticle.getAttribute('position');
-                anchor.setAttribute('position', spawnPos);
-                anchor.setAttribute('visible', true);
-                instructions.style.display = 'none';
-                statusLog.innerText = "AGENT DEPLOYED AT SECTOR";
-                
-                // Rotate robot to face the user camera
-                const camPos = scene.camera.el.getAttribute('position');
-                const angle = Math.atan2(camPos.x - spawnPos.x, camPos.z - spawnPos.z) * (180 / Math.PI);
-                anchor.setAttribute('rotation', `0 ${angle} 0`);
-            }
+            outfit.setAttribute('visible', 'true');
+
+            // Landmark 11 & 12 are Shoulders
+            const leftShoulder = results.poseLandmarks[11];
+            const rightShoulder = results.poseLandmarks[12];
+            const midHip = results.poseLandmarks[23]; // Landmark 23/24 are Hips
+
+            // Calculate Position (Normalized 0-1 to A-Frame units)
+            const centerX = (leftShoulder.x + rightShoulder.x) / 2;
+            const centerY = (leftShoulder.y + midHip.y) / 2;
+            
+            // Map normalized MediaPipe (0 to 1) to A-Frame (-3 to 3 approx)
+            const sceneX = (centerX - 0.5) * -6;
+            const sceneY = (0.5 - centerY) * 4 + 1.6;
+
+            outfit.setAttribute('position', `${sceneX} ${sceneY} -2`);
+
+            // Calculate Scale based on shoulder width
+            const shoulderWidth = Math.abs(leftShoulder.x - rightShoulder.x) * 5;
+            outfit.setAttribute('scale', `${shoulderWidth} ${shoulderWidth} ${shoulderWidth}`);
+
+            // Calculate Tilt (Rotation)
+            const angle = Math.atan2(rightShoulder.y - leftShoulder.y, rightShoulder.x - leftShoulder.x);
+            outfit.setAttribute('rotation', `0 0 ${angle * (180 / Math.PI)}`);
         });
 
-        // AI LOGIC
-        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-        const synth = window.speechSynthesis;
-        let lastText = "";
+        // 3. Start Camera
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await pose.send({image: videoElement});
+            },
+            width: 640,
+            height: 480
+        });
+        camera.start();
 
-        document.getElementById('talkBtn').onclick = () => {
-            recognition.start();
-            statusLog.innerText = "LISTENING...";
-        };
-
-        recognition.onresult = (e) => {
-            lastText = e.results[0][0].transcript;
-            statusLog.innerText = "HEARD: " + lastText;
-            document.getElementById('responseBox').setAttribute('value', lastText.toUpperCase());
-        };
-
-        document.getElementById('genBtn').onclick = () => {
-            if (!lastText) return speak("Scanning environment. Please provide verbal command.");
-            speak("Analysis complete. Real-world surfaces detected. Robot stability is nominal.");
-        };
-
-        document.getElementById('danceBtn').onclick = function() {
-            this.classList.toggle('active');
-            if(this.classList.contains('active')) {
-                robot.setAttribute('animation', "property: rotation; to: 0 360 0; loop: true; dur: 2000; easing: linear");
-                speak("Engaging victory dance!");
+        function changeOutfit(type) {
+            const torso = document.getElementById('torso');
+            if(type === '#jacket') {
+                torso.setAttribute('color', '#333');
+                torso.setAttribute('scale', '1.1 1.1 1.2');
             } else {
-                robot.removeAttribute('animation');
+                torso.setAttribute('color', '#00ffcc');
+                torso.setAttribute('scale', '1 1 1');
             }
-        };
-
-        function speak(t) {
-            const u = new SpeechSynthesisUtterance(t);
-            u.pitch = 1.2;
-            synth.speak(u);
         }
     </script>
 </body>
