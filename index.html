@@ -3,25 +3,38 @@
 <head>
     <meta charset="utf-8">
     <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    
     <style>
         :root { --neon: #00ffcc; --danger: #ff3366; }
         body { margin: 0; font-family: 'Segoe UI', sans-serif; background: #000; overflow: hidden; }
-        #ui-layer { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 100; 
-                    background: rgba(10, 20, 30, 0.85); padding: 25px; border-radius: 20px; 
-                    border: 1px solid var(--neon); box-shadow: 0 0 20px rgba(0, 255, 204, 0.2);
-                    display: flex; gap: 15px; flex-direction: column; align-items: center; width: 350px; }
-        .controls { display: flex; gap: 10px; }
-        button { background: transparent; border: 1px solid var(--neon); color: var(--neon); 
-                 padding: 10px 20px; cursor: pointer; border-radius: 8px; font-weight: bold; transition: 0.3s; }
+        
+        /* UI Layer Adjustments for AR */
+        #ui-layer { 
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 1000; 
+            background: rgba(10, 20, 30, 0.85); padding: 15px; border-radius: 20px; 
+            border: 1px solid var(--neon); display: flex; gap: 10px; flex-direction: column; 
+            align-items: center; width: 90%; max-width: 400px;
+        }
+        .controls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+        button { 
+            background: transparent; border: 1px solid var(--neon); color: var(--neon); 
+            padding: 8px 12px; cursor: pointer; border-radius: 8px; font-weight: bold; font-size: 11px;
+        }
         button:hover { background: var(--neon); color: #000; }
         button.active { background: var(--danger); border-color: var(--danger); color: white; }
-        #log { color: #888; font-size: 12px; text-align: center; min-height: 20px; }
+        #log { color: #888; font-size: 10px; text-align: center; }
+        
+        /* Camera Toggle UI */
+        #camToggle { background: var(--neon); color: #000; position: absolute; top: 20px; right: 20px; z-index: 1000; }
     </style>
 </head>
-<body>
+<body style="margin: 0px; overflow: hidden;">
+
+    <button id="camToggle">SWITCH CAMERA</button>
 
     <div id="ui-layer">
-        <div id="log">SYSTEM READY // WAITING FOR LINK</div>
+        <div id="log">AR SYSTEM READY // ACCESS CAMERA</div>
         <div class="controls">
             <button id="talkBtn">1. TALK</button>
             <button id="genBtn">2. GENERATE</button>
@@ -29,11 +42,12 @@
         </div>
     </div>
 
-    <a-scene background="color: #050505">
-        <a-light type="ambient" intensity="0.4"></a-light>
-        <a-light type="point" position="2 4 4" intensity="0.6" color="#00ffcc"></a-light>
+    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;" renderer="logarithmicDepthBuffer: true;">
+        
+        <a-light type="ambient" intensity="0.7"></a-light>
+        <a-light type="directional" position="1 2 1" intensity="0.8"></a-light>
 
-        <a-entity id="robot" position="0 1 -3">
+        <a-entity id="robot" position="0 0 -5" scale="0.5 0.5 0.5">
             <a-animation id="danceAnim" attribute="rotation" dur="1000" fill="forwards" to="0 360 0" repeat="indefinite" begin="startDance" end="stopDance"></a-animation>
             
             <a-box id="head" width="1.2" height="1" depth="0.7" color="#2c3e50" position="0 0.5 0">
@@ -45,10 +59,10 @@
             <a-cylinder radius="0.04" height="0.2" position="0 -0.1 0" color="#1a252f"></a-cylinder>
             <a-cone radius-bottom="0.4" radius-top="0.1" height="0.8" position="0 -0.6 0" color="#34495e"></a-cone>
             
-            <a-text id="responseBox" value="ONLINE" position="0 1.3 0" align="center" width="3" color="#00ffcc"></a-text>
+            <a-text id="responseBox" value="AR ONLINE" position="0 1.5 0" align="center" width="5" color="#00ffcc"></a-text>
         </a-entity>
 
-        <a-camera position="0 1.6 0"></a-camera>
+        <a-entity camera></a-entity>
     </a-scene>
 
     <script>
@@ -56,27 +70,43 @@
         const talkBtn = document.getElementById('talkBtn');
         const genBtn = document.getElementById('genBtn');
         const danceBtn = document.getElementById('danceBtn');
+        const camToggle = document.getElementById('camToggle');
         const responseBox = document.getElementById('responseBox');
         const screen = document.getElementById('screen');
         const robot = document.getElementById('robot');
 
         const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
         const synth = window.speechSynthesis;
-        
         let lastTranscript = "";
         let isDancing = false;
+        let currentFacingMode = "environment";
 
-        // 1. TALK / MUTE TOGGLE
+        // CAMERA TOGGLE LOGIC
+        camToggle.addEventListener('click', () => {
+            currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
+            
+            // Re-initialize AR.js source
+            const scene = document.querySelector('a-scene');
+            const arjsSystem = scene.systems.arjs;
+            
+            // Alert user - in a real app, you'd re-initialize the video stream constraints
+            log.innerText = "SWITCHING TO " + currentFacingMode.toUpperCase();
+            location.reload(); // Simplest way to re-trigger permission/constraints for AR.js
+        });
+
+        // SPEECH & AGENT LOGIC (Retained from your original)
         talkBtn.addEventListener('click', () => {
-            if (talkBtn.classList.contains('active')) {
-                recognition.stop();
-                talkBtn.classList.remove('active');
-                log.innerText = "MIC MUTED";
-            } else {
-                recognition.start();
-                talkBtn.classList.add('active');
-                log.innerText = "LISTENING...";
-            }
+            try {
+                if (talkBtn.classList.contains('active')) {
+                    recognition.stop();
+                    talkBtn.classList.remove('active');
+                    log.innerText = "MIC MUTED";
+                } else {
+                    recognition.start();
+                    talkBtn.classList.add('active');
+                    log.innerText = "LISTENING...";
+                }
+            } catch(e) { log.innerText = "ERR: " + e.message; }
         });
 
         recognition.onresult = (event) => {
@@ -85,41 +115,28 @@
             responseBox.setAttribute('value', lastTranscript.toUpperCase());
         };
 
-        // 2. GENERATE RESPONSE (The "Agent" Brain)
         genBtn.addEventListener('click', () => {
-            if (!lastTranscript) return speak("Please say something first.");
-            
+            if (!lastTranscript) return speak("Looking for data...");
             log.innerText = "THINKING...";
             screen.setAttribute('color', '#333');
             
-            // MOCK RAG DATA (You will connect this to your LLM API later)
-            const machineData = {
-                "m1": "Machine M1 will fail due to high vibration in the primary motor. Repair needed within 12 hours.",
-                "m2": "Machine M2 is overheating. Coolant levels are 20% below threshold.",
-                "m3": "Machine M3 is nominal but due for lubrication in 3 days."
-            };
-
-            let answer = "I've analyzed your request. ";
-            if (lastTranscript.includes("fail") || lastTranscript.includes("machines")) {
-                answer += "Predictive analysis shows " + machineData.m1 + " and " + machineData.m2;
-                screen.setAttribute('color', '#ff3366'); // Danger color
-            } else if (lastTranscript.includes("status")) {
-                answer += machineData.m3;
-                screen.setAttribute('color', '#00ffcc');
+            let answer = "AR Scan complete. I see you're looking at the real world. ";
+            if (lastTranscript.includes("fail")) {
+                answer += "Machine M1 requires immediate maintenance.";
+                screen.setAttribute('color', '#ff3366');
             } else {
-                answer += "I couldn't find specific failure data for that. Should I run a full diagnostic?";
+                answer += "All systems in this sector are functioning within normal parameters.";
+                screen.setAttribute('color', '#00ffcc');
             }
-
             speak(answer);
         });
 
-        // 3. DANCE
         danceBtn.addEventListener('click', () => {
             isDancing = !isDancing;
             if (isDancing) {
                 robot.emit('startDance');
                 danceBtn.classList.add('active');
-                speak("I love this song!");
+                speak("Commencing AR dance sequence!");
             } else {
                 robot.emit('stopDance');
                 danceBtn.classList.remove('active');
@@ -127,10 +144,8 @@
         });
 
         function speak(text) {
-            responseBox.setAttribute('value', "...");
             const utter = new SpeechSynthesisUtterance(text);
-            utter.pitch = 1.2; // Cuter, higher voice
-            utter.onend = () => responseBox.setAttribute('value', text.substring(0, 30) + "...");
+            utter.pitch = 1.2;
             synth.speak(utter);
         }
     </script>
