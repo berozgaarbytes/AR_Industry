@@ -2,62 +2,71 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>AR Retail Try-On 2026</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR Virtual Mirror - Pro Retail</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     
     <style>
-        body { margin: 0; background: #000; font-family: sans-serif; }
-        #ui-overlay {
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+        #ui {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             z-index: 10; pointer-events: none; display: flex; flex-direction: column;
         }
-        .header { background: rgba(0,0,0,0.8); padding: 20px; color: #00ffcc; text-align: center; }
-        .footer { margin-top: auto; padding: 30px; display: flex; justify-content: center; gap: 20px; pointer-events: auto; }
+        .nav-bar { background: rgba(0,0,0,0.8); padding: 20px; color: #00ffcc; text-align: center; border-bottom: 1px solid #00ffcc; }
+        .controls { margin-top: auto; padding: 40px; display: flex; justify-content: center; gap: 15px; pointer-events: auto; }
+        
         button { 
-            padding: 15px 25px; border-radius: 50px; border: 2px solid #00ffcc;
-            background: rgba(0,255,204,0.1); color: #00ffcc; font-weight: bold; cursor: pointer;
+            background: rgba(0, 255, 204, 0.1); color: #00ffcc; border: 2px solid #00ffcc;
+            padding: 15px 30px; border-radius: 12px; font-weight: bold; cursor: pointer;
+            backdrop-filter: blur(5px); transition: 0.3s;
         }
-        button:hover { background: #00ffcc; color: #000; }
-        video { display: none; } /* Hidden, used as source for A-Frame */
+        button:hover { background: #00ffcc; color: #000; box-shadow: 0 0 20px #00ffcc; }
+        #video-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
     </style>
 </head>
 <body>
 
-    <div id="ui-overlay">
-        <div class="header">VIRTUAL FITTING ROOM // 2026 RETAIL</div>
-        <div class="footer">
-            <button onclick="changeOutfit('#tshirt')">T-SHIRT</button>
-            <button onclick="changeOutfit('#jacket')">JACKET</button>
-            <button id="snapBtn">CAPTURE LOOK</button>
+    <video id="input_video" style="display:none"></video>
+    <canvas id="video-canvas"></canvas>
+
+    <div id="ui">
+        <div class="nav-bar">2026 AR RETAIL // VIRTUAL TRY-ON</div>
+        <div class="controls">
+            <button onclick="loadOutfit('tshirt.glb', 1.0)">SUMMER TEE</button>
+            <button onclick="loadOutfit('jacket.glb', 1.2)">WINTER JACKET</button>
+            <button onclick="loadOutfit('dress.glb', 1.5)">EVENING GOWN</button>
         </div>
     </div>
 
-    <a-scene embedded vr-mode-ui="enabled: false">
+    <a-scene embedded vr-mode-ui="enabled: false" renderer="alpha: true; antialias: true;">
         <a-assets>
-            <video id="webcam" autoplay playsinline></video>
-            <a-asset-item id="shirtModel" src="https://cdn.aframe.io/test-models/models/glTF-2.0/virtualcity/VC.gltf"></a-asset-item>
+            <a-asset-item id="current-garment" src=""></a-asset-item>
         </a-assets>
 
-        <a-video src="#webcam" position="0 1.6 -3" width="6.4" height="4.8"></a-video>
-
-        <a-entity id="outfit" position="0 1.6 -2" visible="false">
-            <a-box id="torso" width="0.8" height="1" depth="0.2" color="#00ffcc" opacity="0.6">
-                <a-text value="PREMIUM FIT" position="0 0.6 0.12" align="center" width="2"></a-text>
-            </a-box>
-            <a-cylinder position="-0.4 0.4 0" rotation="0 0 90" radius="0.05" height="0.4" color="#00ffcc"></a-cylinder>
-            <a-cylinder position="0.4 0.4 0" rotation="0 0 -90" radius="0.05" height="0.4" color="#00ffcc"></a-cylinder>
+        <a-entity id="outfit-anchor" visible="false">
+            <a-entity id="garment-model" 
+                      gltf-model="#current-garment" 
+                      position="0 -0.5 0" 
+                      rotation="0 180 0"
+                      scale="1 1 1">
+            </a-entity>
         </a-entity>
 
-        <a-camera position="0 1.6 0" look-controls-enabled="false"></a-camera>
+        <a-light type="ambient" intensity="0.8"></a-light>
+        <a-light type="directional" position="1 2 1" intensity="0.5"></a-light>
+        <a-camera position="0 1.6 0" look-controls-enabled="false" wasd-controls-enabled="false"></a-camera>
     </a-scene>
 
     <script>
-        const videoElement = document.getElementById('webcam');
-        const outfit = document.getElementById('outfit');
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('video-canvas');
+        const ctx = canvasElement.getContext('2d');
+        const outfitAnchor = document.getElementById('outfit-anchor');
+        const garmentModel = document.getElementById('garment-model');
 
-        // 1. Setup MediaPipe Pose
+        // 1. SETUP BODY TRACKING
         const pose = new Pose({
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
         });
@@ -65,62 +74,61 @@
         pose.setOptions({
             modelComplexity: 1,
             smoothLandmarks: true,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
         });
 
-        // 2. Handle Pose Results
+        // 2. LIVE MAPPING LOGIC
         pose.onResults((results) => {
+            // Draw video to canvas (Mirrored)
+            canvasElement.width = videoElement.videoWidth;
+            canvasElement.height = videoElement.videoHeight;
+            ctx.save();
+            ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            ctx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            ctx.restore();
+
             if (!results.poseLandmarks) {
-                outfit.setAttribute('visible', 'false');
+                outfitAnchor.setAttribute('visible', 'false');
                 return;
             }
 
-            outfit.setAttribute('visible', 'true');
+            outfitAnchor.setAttribute('visible', 'true');
 
-            // Landmark 11 & 12 are Shoulders
-            const leftShoulder = results.poseLandmarks[11];
-            const rightShoulder = results.poseLandmarks[12];
-            const midHip = results.poseLandmarks[23]; // Landmark 23/24 are Hips
+            // Key Landmarks: 11 (L Shoulder), 12 (R Shoulder), 23 (L Hip), 24 (R Hip)
+            const lS = results.poseLandmarks[11];
+            const rS = results.poseLandmarks[12];
+            const midX = (lS.x + rS.x) / 2;
+            const midY = (lS.y + rS.y) / 2;
 
-            // Calculate Position (Normalized 0-1 to A-Frame units)
-            const centerX = (leftShoulder.x + rightShoulder.x) / 2;
-            const centerY = (leftShoulder.y + midHip.y) / 2;
-            
-            // Map normalized MediaPipe (0 to 1) to A-Frame (-3 to 3 approx)
-            const sceneX = (centerX - 0.5) * -6;
-            const sceneY = (0.5 - centerY) * 4 + 1.6;
+            // Convert MediaPipe (0 to 1) to A-Frame space
+            // Flip X because the camera is mirrored
+            const posX = (0.5 - midX) * 5; 
+            const posY = (0.5 - midY) * 3 + 1.6;
+            outfitAnchor.setAttribute('position', `${posX} ${posY} -2.5`);
 
-            outfit.setAttribute('position', `${sceneX} ${sceneY} -2`);
+            // Calculate Scale (based on distance between shoulders)
+            const shoulderDist = Math.sqrt(Math.pow(lS.x - rS.x, 2) + Math.pow(lS.y - rS.y, 2));
+            const garmentScale = shoulderDist * 4.5; // Multiplier to fit the model
+            outfitAnchor.setAttribute('scale', `${garmentScale} ${garmentScale} ${garmentScale}`);
 
-            // Calculate Scale based on shoulder width
-            const shoulderWidth = Math.abs(leftShoulder.x - rightShoulder.x) * 5;
-            outfit.setAttribute('scale', `${shoulderWidth} ${shoulderWidth} ${shoulderWidth}`);
-
-            // Calculate Tilt (Rotation)
-            const angle = Math.atan2(rightShoulder.y - leftShoulder.y, rightShoulder.x - leftShoulder.x);
-            outfit.setAttribute('rotation', `0 0 ${angle * (180 / Math.PI)}`);
+            // Calculate Rotation (Lean angle)
+            const angle = Math.atan2(rS.y - lS.y, rS.x - lS.x);
+            outfitAnchor.setAttribute('rotation', `0 0 ${angle * (180 / Math.PI)}`);
         });
 
-        // 3. Start Camera
+        // 3. START CAMERA
         const camera = new Camera(videoElement, {
-            onFrame: async () => {
-                await pose.send({image: videoElement});
-            },
-            width: 640,
-            height: 480
+            onFrame: async () => { await pose.send({image: videoElement}); },
+            width: 1280, height: 720
         });
         camera.start();
 
-        function changeOutfit(type) {
-            const torso = document.getElementById('torso');
-            if(type === '#jacket') {
-                torso.setAttribute('color', '#333');
-                torso.setAttribute('scale', '1.1 1.1 1.2');
-            } else {
-                torso.setAttribute('color', '#00ffcc');
-                torso.setAttribute('scale', '1 1 1');
-            }
+        // 4. OUTFIT SWITCHER
+        function loadOutfit(fileName, offsetScale) {
+            // In production, you'd update the src to your hosted .glb files
+            console.log("Loading Outfit:", fileName);
+            // garmentModel.setAttribute('gltf-model', `url(./models/${fileName})`);
         }
     </script>
 </body>
