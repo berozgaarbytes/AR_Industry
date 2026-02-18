@@ -3,55 +3,31 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AR Try-On: Hard Fix</title>
+    <title>AI Auto-Fit AR Retail</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
-        
-        /* Ensure the UI is ALWAYS on top */
-        #ui-layer { 
-            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); 
-            z-index: 9999; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
-            background: rgba(0,0,0,0.8); padding: 20px; border-radius: 20px; 
-            border: 2px solid #00ffcc; width: 90%; max-width: 450px; pointer-events: auto;
-        }
-
-        button { 
-            background: #111; border: 1px solid #00ffcc; color: #00ffcc; 
-            padding: 12px 18px; border-radius: 8px; cursor: pointer; 
-            font-weight: bold; font-size: 14px; flex-grow: 1;
-        }
-        button:active { background: #00ffcc; color: #000; }
-
+        body { margin: 0; overflow: hidden; background: #000; }
         #video-canvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: 1; transform: scaleX(-1); }
-        a-scene { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 2; }
+        #status { position: absolute; top: 20px; left: 20px; z-index: 100; color: #00ffcc; font-family: monospace; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 8px; border: 1px solid #00ffcc; }
+        a-scene { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 2; pointer-events: none; }
     </style>
 </head>
 <body>
 
-    <div id="ui-layer">
-        <button onclick="adjustY(0.1)">MOVE UP</button>
-        <button onclick="adjustY(-0.1)">MOVE DOWN</button>
-        <button onclick="adjustScale(0.5)">LARGER</button>
-        <button onclick="adjustScale(-0.5)">SMALLER</button>
-        <button onclick="rotateModel()">ROTATE 180</button>
-    </div>
-
+    <div id="status">SCANNING FOR BODY...</div>
     <video id="input_video" style="display:none" playsinline muted autoplay></video>
     <canvas id="video-canvas"></canvas>
 
-    <a-scene embedded vr-mode-ui="enabled: false" renderer="alpha: true; antialias: true;">
+    <a-scene embedded vr-mode-ui="enabled: false" renderer="alpha: true; antialias: true; colorManagement: true;">
         <a-assets>
             <a-asset-item id="jacket-file" src="Jeans Denim Jacket.glb"></a-asset-item>
         </a-assets>
 
         <a-entity id="jacket-anchor" visible="false">
-            <a-entity id="jacket-wrapper" rotation="0 180 0">
-                <a-entity id="jacket-model" gltf-model="#jacket-file" scale="1 1 1"></a-entity>
-            </a-entity>
+            <a-entity id="jacket-model" gltf-model="#jacket-file" rotation="0 180 0"></a-entity>
         </a-entity>
 
         <a-light type="ambient" intensity="1.5"></a-light>
@@ -60,41 +36,34 @@
     </a-scene>
 
     <script>
-        const jacketAnchor = document.getElementById('jacket-anchor');
-        const jacketModel = document.getElementById('jacket-model');
-        const jacketWrapper = document.getElementById('jacket-wrapper');
         const videoElement = document.getElementById('input_video');
         const canvasElement = document.getElementById('video-canvas');
         const canvasCtx = canvasElement.getContext('2d');
+        const jacketAnchor = document.getElementById('jacket-anchor');
+        const jacketModel = document.getElementById('jacket-model');
+        const statusTxt = document.getElementById('status');
 
-        // CALIBRATION VARIABLES
-        let offsetHeight = 0.2; 
-        let scaleMultiplier = 4.5;
-        let rotationZ = 0;
+        let modelBounds = { width: 1, height: 1, centerY: 0 };
 
-        function adjustY(val) { offsetHeight += val; }
-        function adjustScale(val) { scaleMultiplier += val; }
-        function rotateModel() { 
-            rotationZ = (rotationZ === 0) ? 180 : 0;
-            // This applies a 180-degree flip on the Z axis to fix upside-down models
-            jacketWrapper.setAttribute('rotation', `0 180 ${rotationZ}`);
-        }
-
-        // AUTO-CENTER THE MESH INTERNALLY
+        // 1. NORMALIZE THE MODEL (Finding the "Collar" line)
         jacketModel.addEventListener('model-loaded', () => {
-            const mesh = jacketModel.getObject3D('mesh');
-            const box = new THREE.Box3().setFromObject(mesh);
+            const obj = jacketModel.getObject3D('mesh');
+            const box = new THREE.Box3().setFromObject(obj);
+            const size = new THREE.Vector3();
             const center = new THREE.Vector3();
+            box.getSize(size);
             box.getCenter(center);
-            // This offsets the model's internal center so it spins correctly
-            jacketModel.setAttribute('position', `${-center.x} ${-center.y} ${-center.z}`);
+            
+            modelBounds.width = size.x;
+            modelBounds.height = size.y;
+            
+            // Shift model so the top-center (collar) is at the anchor point
+            jacketModel.setAttribute('position', `${-center.x} ${-center.y + (size.y * 0.35)} ${-center.z}`);
+            statusTxt.innerText = "MODEL READY - STEP BACK";
         });
 
-        const pose = new Pose({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-        });
-
-        pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
+        const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
+        pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6 });
 
         pose.onResults((results) => {
             canvasElement.width = videoElement.videoWidth;
@@ -103,44 +72,37 @@
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
             canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
-            if (results.poseLandmarks) {
+            if (results.poseLandmarks && modelBounds.width > 0) {
                 jacketAnchor.setAttribute('visible', 'true');
                 const lS = results.poseLandmarks[11];
                 const rS = results.poseLandmarks[12];
 
-                // Position midpoint
+                // CENTER POSITION
                 const midX = (lS.x + rS.x) / 2;
                 const midY = (lS.y + rS.y) / 2;
-                
-                // Position logic
-                const posX = (0.5 - midX) * 4.2; 
-                const posY = (0.5 - midY) * 3 + 1.6 + offsetHeight;
-                jacketAnchor.setAttribute('position', `${posX} ${posY} -2.0`);
+                jacketAnchor.setAttribute('position', `${(0.5 - midX) * 4.2} ${(0.5 - midY) * 3 + 1.6} -2.2`);
 
-                // Scale logic
+                // AUTO-SCALE MATH
+                // 1. Calculate shoulder distance in "screen units"
                 const shoulderDist = Math.sqrt(Math.pow(lS.x - rS.x, 2) + Math.pow(lS.y - rS.y, 2));
-                const finalScale = shoulderDist * scaleMultiplier;
+                
+                // 2. Map screen units to 3D units (approx 5.0 ratio for -2.2 depth)
+                const targetWidthIn3D = shoulderDist * 5.0; 
+                
+                // 3. Scale = (Desired Width / Actual Model Width)
+                const finalScale = targetWidthIn3D / modelBounds.width;
                 jacketAnchor.setAttribute('scale', `${finalScale} ${finalScale} ${finalScale}`);
 
-                // Real-time tilt
+                // AUTO-TILT
                 const angle = Math.atan2(rS.y - lS.y, rS.x - lS.x);
-                // Note: If you flipped the model 180, we need to handle rotation carefully
-                const tilt = angle * (180 / Math.PI);
-                jacketAnchor.setAttribute('rotation', `0 0 ${tilt}`);
-
-                // Draw skeleton for visual alignment
-                drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FFCC', lineWidth: 1});
-            } else {
-                jacketAnchor.setAttribute('visible', 'false');
+                jacketAnchor.setAttribute('rotation', `0 0 ${angle * (180 / Math.PI)}`);
+                
+                statusTxt.innerText = "TRACKING ACTIVE";
             }
             canvasCtx.restore();
         });
 
-        const camera = new Camera(videoElement, {
-            onFrame: async () => { await pose.send({image: videoElement}); },
-            width: 1280, height: 720
-        });
-        camera.start();
+        new Camera(videoElement, { onFrame: async () => { await pose.send({image: videoElement}); }, width: 1280, height: 720 }).start();
     </script>
 </body>
 </html>
