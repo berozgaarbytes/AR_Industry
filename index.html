@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AR Try-On: Skeleton + Jacket</title>
+    <title>AR Try-On: Auto-Fit Edition</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
@@ -11,22 +11,21 @@
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
         #video-canvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: 1; transform: scaleX(-1); }
-        #overlay-ui { position: absolute; top: 10px; left: 10px; z-index: 100; color: #00ffcc; pointer-events: none; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 5px; border: 1px solid #00ffcc; }
+        #overlay-ui { position: absolute; top: 10px; left: 10px; z-index: 100; color: #00ffcc; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 5px; border: 1px solid #00ffcc; pointer-events: none; }
         a-scene { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 2; pointer-events: none; }
     </style>
 </head>
 <body>
 
     <div id="overlay-ui">
-        SYSTEM: <span id="main-status">INIT</span><br>
-        LANDMARKS: <span id="landmark-status">0</span>/33<br>
-        MODEL: <span id="model-status">WAITING</span>
+        AI STATUS: <span id="main-status">INIT</span><br>
+        FIT: <span id="fit-status">CALIBRATING</span>
     </div>
 
     <video id="input_video" style="display:none" playsinline muted autoplay></video>
     <canvas id="video-canvas"></canvas>
 
-    <a-scene embedded vr-mode-ui="enabled: false" renderer="alpha: true; antialias: true;">
+    <a-scene embedded vr-mode-ui="enabled: false" renderer="alpha: true; antialias: true; colorManagement: true;">
         <a-assets>
             <a-asset-item id="jacket-file" src="Jeans Denim Jacket.glb"></a-asset-item>
         </a-assets>
@@ -34,13 +33,13 @@
         <a-entity id="jacket-anchor" visible="false">
             <a-entity id="jacket-model" 
                       gltf-model="#jacket-file" 
-                      position="0 -0.5 0" 
-                      rotation="0 180 0" 
-                      scale="10 10 10">
+                      position="0 0 0" 
+                      rotation="0 180 0">
             </a-entity>
         </a-entity>
 
-        <a-light type="ambient" intensity="2"></a-light>
+        <a-light type="ambient" intensity="1.5"></a-light>
+        <a-light type="directional" position="1 2 1" intensity="1"></a-light>
         <a-camera position="0 1.6 0" look-controls-enabled="false" wasd-controls-enabled="false"></a-camera>
     </a-scene>
 
@@ -50,56 +49,69 @@
         const canvasCtx = canvasElement.getContext('2d');
         const jacketAnchor = document.getElementById('jacket-anchor');
         const jacketModel = document.getElementById('jacket-model');
-        
-        // Status Elements
-        const mainStatus = document.getElementById('main-status');
-        const landStatus = document.getElementById('landmark-status');
-        const modelStatus = document.getElementById('model-status');
+        const fitStatus = document.getElementById('fit-status');
+
+        let modelBounds = null;
+
+        // 1. Calculate Model Size on Load
+        jacketModel.addEventListener('model-loaded', () => {
+            const mesh = jacketModel.getObject3D('mesh');
+            const box = new THREE.Box3().setFromObject(mesh);
+            const size = new THREE.Vector3();
+            box.getSize(size);
+            
+            // We want to know the width of the jacket in 3D units
+            modelBounds = { width: size.x, height: size.y };
+            fitStatus.innerText = "READY";
+            console.log("Model Width:", modelBounds.width);
+        });
 
         const pose = new Pose({
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
         });
 
-        pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
+        pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6 });
 
         pose.onResults((results) => {
-            mainStatus.innerText = "RUNNING";
-            
-            // 1. Draw Camera Feed
             canvasElement.width = videoElement.videoWidth;
             canvasElement.height = videoElement.videoHeight;
             canvasCtx.save();
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
             canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
-            // 2. Draw Pose Skeleton (Live Debugging)
-            if (results.poseLandmarks) {
-                landStatus.innerText = "33";
-                drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FFCC', lineWidth: 2});
-                drawLandmarks(canvasCtx, results.poseLandmarks, {color: '#FF3366', lineWidth: 1, radius: 2});
-                
-                // 3. Update Jacket Positioning
+            if (results.poseLandmarks && modelBounds) {
                 jacketAnchor.setAttribute('visible', 'true');
+                
                 const lS = results.poseLandmarks[11];
                 const rS = results.poseLandmarks[12];
-                
+                const midHip = results.poseLandmarks[23]; // For torso height ref
+
+                // Position: Midpoint of shoulders
                 const midX = (lS.x + rS.x) / 2;
                 const midY = (lS.y + rS.y) / 2;
                 
-                // Mirror mapping
                 const posX = (0.5 - midX) * 4.5; 
                 const posY = (0.5 - midY) * 3 + 1.6;
-                jacketAnchor.setAttribute('position', `${posX} ${posY} -2.5`);
+                jacketAnchor.setAttribute('position', `${posX} ${posY} -2.2`);
 
-                // Scaling logic
-                const dist = Math.sqrt(Math.pow(lS.x - rS.x, 2) + Math.pow(lS.y - rS.y, 2));
-                const dynamicScale = dist * 15; // Increased multiplier for visibility
-                jacketAnchor.setAttribute('scale', `${dynamicScale} ${dynamicScale} ${dynamicScale}`);
+                // MATH: Force the jacket to match human shoulder width
+                // shoulderDist in screen space (0 to 1)
+                const shoulderDist = Math.sqrt(Math.pow(lS.x - rS.x, 2) + Math.pow(lS.y - rS.y, 2));
                 
+                // 3D width we want it to be (adjusted for perspective)
+                const targetWidth = shoulderDist * 5.0; 
+                
+                // Final Scale = Target / Original Model Size
+                const finalScale = targetWidth / modelBounds.width;
+                jacketAnchor.setAttribute('scale', `${finalScale} ${finalScale} ${finalScale}`);
+
+                // Rotation
                 const angle = Math.atan2(rS.y - lS.y, rS.x - lS.x);
                 jacketAnchor.setAttribute('rotation', `0 0 ${angle * (180 / Math.PI)}`);
+
+                // Optional: Draw skeleton for alignment check
+                drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FFCC', lineWidth: 1});
             } else {
-                landStatus.innerText = "0";
                 jacketAnchor.setAttribute('visible', 'false');
             }
             canvasCtx.restore();
@@ -110,10 +122,6 @@
             width: 1280, height: 720
         });
         camera.start();
-
-        // Model loading checks
-        jacketModel.addEventListener('model-loaded', () => { modelStatus.innerText = "LOADED"; });
-        jacketModel.addEventListener('model-error', () => { modelStatus.innerText = "ERROR"; });
     </script>
 </body>
 </html>
