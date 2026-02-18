@@ -3,21 +3,27 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AI Auto-Fit AR Retail</title>
+    <title>Commercial AR Try-On</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Helvetica', sans-serif; }
         #video-canvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: 1; transform: scaleX(-1); }
-        #status { position: absolute; top: 20px; left: 20px; z-index: 100; color: #00ffcc; font-family: monospace; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 8px; border: 1px solid #00ffcc; }
-        a-scene { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 2; pointer-events: none; }
+        #overlay { 
+            position: absolute; top: 30px; left: 50%; transform: translateX(-50%); 
+            z-index: 100; color: #00ffcc; text-align: center; pointer-events: none;
+        }
+        .status-pill { 
+            background: rgba(0,0,0,0.8); padding: 12px 25px; border-radius: 50px; 
+            border: 1px solid #00ffcc; font-weight: bold; letter-spacing: 1px;
+            box-shadow: 0 0 15px rgba(0,255,204,0.3);
+        }
     </style>
 </head>
 <body>
 
-    <div id="status">SCANNING FOR BODY...</div>
+    <div id="overlay"><div class="status-pill" id="status">INITIALIZING AI MIRROR...</div></div>
     <video id="input_video" style="display:none" playsinline muted autoplay></video>
     <canvas id="video-canvas"></canvas>
 
@@ -27,10 +33,12 @@
         </a-assets>
 
         <a-entity id="jacket-anchor" visible="false">
-            <a-entity id="jacket-model" gltf-model="#jacket-file" rotation="0 180 0"></a-entity>
+            <a-entity id="jacket-wrapper" rotation="0 180 180">
+                <a-entity id="jacket-model" gltf-model="#jacket-file"></a-entity>
+            </a-entity>
         </a-entity>
 
-        <a-light type="ambient" intensity="1.5"></a-light>
+        <a-light type="ambient" intensity="1.8"></a-light>
         <a-light type="directional" position="1 2 1" intensity="1"></a-light>
         <a-camera position="0 1.6 0" look-controls-enabled="false" wasd-controls-enabled="false"></a-camera>
     </a-scene>
@@ -41,11 +49,11 @@
         const canvasCtx = canvasElement.getContext('2d');
         const jacketAnchor = document.getElementById('jacket-anchor');
         const jacketModel = document.getElementById('jacket-model');
-        const statusTxt = document.getElementById('status');
+        const statusPill = document.getElementById('status');
 
-        let modelBounds = { width: 1, height: 1, centerY: 0 };
+        let modelData = { width: 1, collarOffset: 0 };
 
-        // 1. NORMALIZE THE MODEL (Finding the "Collar" line)
+        // COMMERCIAL LOGIC: Auto-Normalization of 3D Assets
         jacketModel.addEventListener('model-loaded', () => {
             const obj = jacketModel.getObject3D('mesh');
             const box = new THREE.Box3().setFromObject(obj);
@@ -54,16 +62,16 @@
             box.getSize(size);
             box.getCenter(center);
             
-            modelBounds.width = size.x;
-            modelBounds.height = size.y;
+            modelData.width = size.x;
             
-            // Shift model so the top-center (collar) is at the anchor point
-            jacketModel.setAttribute('position', `${-center.x} ${-center.y + (size.y * 0.35)} ${-center.z}`);
-            statusTxt.innerText = "MODEL READY - STEP BACK";
+            // This centers the model mesh perfectly inside our anchor
+            // We shift it so the 3D origin is at the top-center (The Collar)
+            jacketModel.setAttribute('position', `${-center.x} ${-center.y + (size.y * 0.4)} ${-center.z}`);
+            statusPill.innerText = "READY: STAND BACK";
         });
 
         const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
-        pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6 });
+        pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.7 });
 
         pose.onResults((results) => {
             canvasElement.width = videoElement.videoWidth;
@@ -72,32 +80,29 @@
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
             canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
-            if (results.poseLandmarks && modelBounds.width > 0) {
+            if (results.poseLandmarks && modelData.width > 0) {
                 jacketAnchor.setAttribute('visible', 'true');
                 const lS = results.poseLandmarks[11];
                 const rS = results.poseLandmarks[12];
 
-                // CENTER POSITION
+                // 1. POSITION (Locked to Shoulder Midpoint)
                 const midX = (lS.x + rS.x) / 2;
                 const midY = (lS.y + rS.y) / 2;
                 jacketAnchor.setAttribute('position', `${(0.5 - midX) * 4.2} ${(0.5 - midY) * 3 + 1.6} -2.2`);
 
-                // AUTO-SCALE MATH
-                // 1. Calculate shoulder distance in "screen units"
-                const shoulderDist = Math.sqrt(Math.pow(lS.x - rS.x, 2) + Math.pow(lS.y - rS.y, 2));
-                
-                // 2. Map screen units to 3D units (approx 5.0 ratio for -2.2 depth)
-                const targetWidthIn3D = shoulderDist * 5.0; 
-                
-                // 3. Scale = (Desired Width / Actual Model Width)
-                const finalScale = targetWidthIn3D / modelBounds.width;
-                jacketAnchor.setAttribute('scale', `${finalScale} ${finalScale} ${finalScale}`);
+                // 2. AUTO-SCALE (Normalization Math)
+                const screenShoulderWidth = Math.sqrt(Math.pow(lS.x - rS.x, 2) + Math.pow(lS.y - rS.y, 2));
+                const targetWorldWidth = screenShoulderWidth * 5.2; // Optimized for 2.2m distance
+                const normalizedScale = targetWorldWidth / modelData.width;
+                jacketAnchor.setAttribute('scale', `${normalizedScale} ${normalizedScale} ${normalizedScale}`);
 
-                // AUTO-TILT
+                // 3. TILT (Real-time shoulder alignment)
                 const angle = Math.atan2(rS.y - lS.y, rS.x - lS.x);
                 jacketAnchor.setAttribute('rotation', `0 0 ${angle * (180 / Math.PI)}`);
                 
-                statusTxt.innerText = "TRACKING ACTIVE";
+                statusPill.innerText = "FITTING ACTIVE";
+            } else {
+                jacketAnchor.setAttribute('visible', 'false');
             }
             canvasCtx.restore();
         });
